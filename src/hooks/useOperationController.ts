@@ -3,6 +3,8 @@ import { useSimulationStore } from '../store/useSimulationStore';
 import { useCraneAnimation } from './useCraneAnimation';
 import { useTruckAnimation } from './useTruckAnimation';
 import { validatePlacement } from '../utils/yardUtils';
+import { calculateDistance } from '../utils/truckDispatcher';
+import { SCENE_CONSTANTS } from '../types';
 
 export const useOperationController = () => {
   const {
@@ -20,6 +22,9 @@ export const useOperationController = () => {
     setViolationMessage,
     currentJobRecord,
     updateJobRecord,
+    recordContainerStartTime,
+    finalizeContainerTime,
+    incrementTruckMetric,
   } = useSimulationStore();
 
   const {
@@ -70,6 +75,8 @@ export const useOperationController = () => {
       return;
     }
 
+    recordContainerStartTime(container.id);
+
     const executeStep = () => {
       if (!isPlaying || isPaused) {
         isProcessing.current = false;
@@ -113,6 +120,9 @@ export const useOperationController = () => {
           });
           if (truck) {
             currentTruckId.current = truck.id;
+            const emptyDist = calculateDistance(truck.position, SCENE_CONSTANTS.CRANE_TRANSFER_POSITION);
+            incrementTruckMetric(truck.id, 'emptyDistance', emptyDist);
+            incrementTruckMetric(truck.id, 'tripCount', 1);
           } else {
             setTimeout(() => {
               currentStep.current = 3;
@@ -132,7 +142,24 @@ export const useOperationController = () => {
 
         case 5:
           if (currentTruckId.current) {
-            sendToYard(currentTruckId.current, container.id, container.targetSlot, {
+            const tid = currentTruckId.current;
+            const { bay, row } = (() => {
+              const match = container.targetSlot.match(/([A-F])(\d+)-(\d+)/);
+              if (!match) return { bay: 0, row: 0 };
+              return { bay: match[1].charCodeAt(0) - 65, row: parseInt(match[2]) - 1 };
+            })();
+            const slotX = SCENE_CONSTANTS.YARD_ORIGIN_X + bay * SCENE_CONSTANTS.SLOT_WIDTH;
+            const slotZ = SCENE_CONSTANTS.YARD_ORIGIN_Z + row * SCENE_CONSTANTS.SLOT_DEPTH;
+            const dropPos = { x: slotX + 3, z: slotZ };
+            
+            const trk = trucks.find(t => t.id === tid);
+            if (trk) {
+              const loadedDist = calculateDistance(trk.position, dropPos);
+              incrementTruckMetric(tid, 'loadedDistance', loadedDist);
+              incrementTruckMetric(tid, 'totalDistance', calculateDistance(trk.position, dropPos));
+            }
+
+            sendToYard(tid, container.id, container.targetSlot, {
               onComplete: () => {
                 currentStep.current = 6;
                 executeStep();
@@ -164,6 +191,8 @@ export const useOperationController = () => {
             onComplete: () => {
               const success = placeContainerInYard(container.id, container.targetSlot);
               if (success) {
+                finalizeContainerTime(container.id);
+
                 if (currentTruckId.current) {
                   returnToPark(currentTruckId.current);
                   currentTruckId.current = null;
@@ -194,6 +223,7 @@ export const useOperationController = () => {
     yardGrid, isCraneAnimating, crane, trucks,
     incrementContainerIndex, placeContainerInYard, addOperationLog, 
     setViolationMessage, updateJobRecord,
+    recordContainerStartTime, finalizeContainerTime, incrementTruckMetric,
     moveToShip, pickContainer, moveToTransferPoint, placeOnTruck,
     moveToYard, placeInYard, pickFromTruck,
     dispatchAndSendToCrane, sendToYard, returnToPark,

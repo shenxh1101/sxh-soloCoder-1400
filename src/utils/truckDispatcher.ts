@@ -1,4 +1,4 @@
-import { Truck, SCENE_CONSTANTS } from '../types';
+import { Truck, TruckMetrics, SCENE_CONSTANTS } from '../types';
 
 export const calculateDistance = (
   p1: { x: number; z: number },
@@ -36,6 +36,7 @@ export const dispatchTruck = (
 };
 
 export const createInitialTrucks = (): Truck[] => {
+  const emptyMetrics = (): TruckMetrics => ({ tripCount: 0, emptyDistance: 0, loadedDistance: 0, totalDistance: 0 });
   return [
     {
       id: 'TRK-001',
@@ -46,6 +47,7 @@ export const createInitialTrucks = (): Truck[] => {
       rotation: Math.PI,
       totalOperationTime: 0,
       totalIdleTime: 0,
+      metrics: emptyMetrics(),
     },
     {
       id: 'TRK-002',
@@ -56,6 +58,7 @@ export const createInitialTrucks = (): Truck[] => {
       rotation: Math.PI,
       totalOperationTime: 0,
       totalIdleTime: 0,
+      metrics: emptyMetrics(),
     },
     {
       id: 'TRK-003',
@@ -66,6 +69,7 @@ export const createInitialTrucks = (): Truck[] => {
       rotation: Math.PI,
       totalOperationTime: 0,
       totalIdleTime: 0,
+      metrics: emptyMetrics(),
     },
   ];
 };
@@ -73,4 +77,31 @@ export const createInitialTrucks = (): Truck[] => {
 export const calculateTruckUtilization = (truck: Truck, totalTime: number): number => {
   if (totalTime === 0) return 0;
   return (truck.totalOperationTime / totalTime) * 100;
+};
+
+export const formatDistance = (dist: number): string => {
+  return dist.toFixed(1);
+};
+
+export const summarizeTruckMetrics = (trucks: Truck[]): { totalTrips: number; totalEmpty: number; totalLoaded: number; avgUtilization: number } => {
+  let totalTrips = 0;
+  let totalEmpty = 0;
+  let totalLoaded = 0;
+  let totalOpTime = 0;
+  let totalAllTime = 0;
+
+  for (const truck of trucks) {
+    totalTrips += truck.metrics.tripCount;
+    totalEmpty += truck.metrics.emptyDistance;
+    totalLoaded += truck.metrics.loadedDistance;
+    totalOpTime += truck.totalOperationTime;
+    totalAllTime += truck.totalOperationTime + truck.totalIdleTime;
+  }
+
+  return {
+    totalTrips,
+    totalEmpty,
+    totalLoaded,
+    avgUtilization: totalAllTime > 0 ? (totalOpTime / totalAllTime) * 100 : 0,
+  };
 };

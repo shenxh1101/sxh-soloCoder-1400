@@ -4,12 +4,15 @@ import {
   SimulationActions, 
   Crane, 
   Container,
+  TruckMetrics,
   SCENE_CONSTANTS 
 } from '../types';
 import { mockJobOrders, getSlotPosition } from '../utils/mockData';
 import { createEmptyYardGrid, validatePlacement } from '../utils/yardUtils';
 import { createInitialTrucks, calculateTruckUtilization } from '../utils/truckDispatcher';
 import { exportJobRecordToJSON, generateJobRecordId } from '../utils/exportUtils';
+
+const emptyMetrics = (): TruckMetrics => ({ tripCount: 0, emptyDistance: 0, loadedDistance: 0, totalDistance: 0 });
 
 const createInitialCrane = (): Crane => ({
   id: 'CRANE-001',
@@ -39,6 +42,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   violationMessage: null,
   currentContainerIndex: 0,
   replayLogIndex: 0,
+  containerStartTimes: {},
+  editingContainerId: null,
+  validationPreview: null,
 
   setMode: (mode) => set({ mode }),
 
@@ -50,6 +56,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         selectedJobOrderId: id, 
         activeContainers: containers,
         currentContainerIndex: 0,
+        containerStartTimes: {},
       });
     }
   },
@@ -59,6 +66,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     if (!selectedJobOrderId || activeContainers.length === 0) return;
 
     const now = Date.now();
+    const initialStartTimes: Record<string, number> = {};
+    activeContainers.forEach(c => { initialStartTimes[c.id] = 0; });
+
     set({
       isPlaying: true,
       isPaused: false,
@@ -68,6 +78,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       crane: createInitialCrane(),
       trucks: createInitialTrucks(),
       yardGrid: createEmptyYardGrid(),
+      containerStartTimes: initialStartTimes,
       currentJobRecord: {
         id: generateJobRecordId(),
         jobOrderId: selectedJobOrderId,
@@ -77,6 +88,11 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         containerTimes: {},
         craneEfficiency: 0,
         truckUtilizations: {},
+        truckMetrics: {
+          'TRK-001': emptyMetrics(),
+          'TRK-002': emptyMetrics(),
+          'TRK-003': emptyMetrics(),
+        },
         logs: [],
       },
       activeContainers: activeContainers.map(c => ({ ...c, status: 'ON_SHIP' as const })),
@@ -99,6 +115,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     yardGrid: createEmptyYardGrid(),
     currentJobRecord: null,
     violationMessage: null,
+    containerStartTimes: {},
+    editingContainerId: null,
+    validationPreview: null,
     activeContainers: get().selectedJobOrderId 
       ? (get().jobOrders.find(j => j.id === get().selectedJobOrderId)?.containers.map(c => ({ ...c, status: 'ON_SHIP' as const })) || [])
       : [],
@@ -109,7 +128,8 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   updateTime: (delta) => {
     const { currentTime, playbackSpeed, isPaused } = get();
     if (isPaused) return;
-    set({ currentTime: currentTime + delta * playbackSpeed });
+    const newTime = currentTime + delta * playbackSpeed;
+    set({ currentTime: newTime });
     
     const { trucks } = get();
     const updatedTrucks = trucks.map(truck => ({
@@ -135,27 +155,29 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   })),
 
   addOperationLog: (log) => {
-    const { currentJobRecord, currentTime } = get();
-    if (!currentJobRecord) return;
+    const state = get();
+    if (!state.currentJobRecord) return;
     
-    const timestamp = Date.now();
-    const newLog = { ...log, timestamp };
-    const containerId = log.containerId;
-    
-    if (containerId && !currentJobRecord.containerTimes[containerId]) {
-      currentJobRecord.containerTimes[containerId] = 0;
-    }
+    const snapshot: import('../types').ReplaySnapshot = {
+      crane: { ...state.crane },
+      trucks: state.trucks.map(t => ({ ...t })),
+      containers: state.activeContainers.map(c => ({ ...c })),
+      yardGrid: state.yardGrid.map(bay => bay.map(row => row.map(slot => ({ ...slot })))),
+      currentTime: state.currentTime,
+      currentContainerIndex: state.currentContainerIndex,
+      completedContainers: state.currentJobRecord.completedContainers,
+    };
+
+    const newLog = { 
+      ...log, 
+      timestamp: Date.now(),
+      snapshot,
+    };
     
     set(state => ({
       currentJobRecord: {
         ...state.currentJobRecord!,
         logs: [...state.currentJobRecord!.logs, newLog],
-        containerTimes: containerId 
-          ? { 
-              ...state.currentJobRecord!.containerTimes,
-              [containerId]: (state.currentJobRecord!.containerTimes[containerId] || 0) + currentTime 
-            }
-          : state.currentJobRecord!.containerTimes,
       },
     }));
   },
@@ -207,13 +229,12 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     );
 
     const newCompleted = (state.currentJobRecord?.completedContainers || 0) + 1;
-    const totalTime = (state.currentJobRecord ? Date.now() - state.currentJobRecord.startTime : 0) / 3600000;
-    const craneEfficiency = totalTime > 0 ? newCompleted / totalTime : 0;
+    const elapsedTime = state.currentTime / 3600;
+    const craneEfficiency = elapsedTime > 0 ? newCompleted / elapsedTime : 0;
 
     const truckUtilizations: Record<string, number> = {};
-    const totalSimulationTime = state.currentTime;
     state.trucks.forEach(truck => {
-      truckUtilizations[truck.id] = calculateTruckUtilization(truck, totalSimulationTime);
+      truckUtilizations[truck.id] = calculateTruckUtilization(truck, state.currentTime);
     });
 
     set({
@@ -247,6 +268,8 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
 
   resetReplayLogIndex: () => set({ replayLogIndex: 0 }),
 
+  setReplayLogIndex: (index: number) => set({ replayLogIndex: index }),
+
   exportJobRecord: () => {
     const { currentJobRecord } = get();
     if (!currentJobRecord) return '';
@@ -255,13 +278,121 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
 
   loadReplayData: (data) => {
     const parsed = JSON.parse(data);
+    const truckMetrics: Record<string, TruckMetrics> = parsed.truckMetrics || {
+      'TRK-001': emptyMetrics(),
+      'TRK-002': emptyMetrics(),
+      'TRK-003': emptyMetrics(),
+    };
     set({
       mode: 'REPLAY',
-      currentJobRecord: parsed,
-      isPlaying: true,
-      isPaused: false,
+      isPlaying: false,
+      isPaused: true,
       currentTime: 0,
       replayLogIndex: 0,
+      currentJobRecord: {
+        ...parsed,
+        truckMetrics,
+      },
+      yardGrid: createEmptyYardGrid(),
+      trucks: createInitialTrucks(),
+      crane: createInitialCrane(),
+      activeContainers: [],
     });
+  },
+
+  enterPlanMode: () => {
+    const { selectedJobOrderId, jobOrders } = get();
+    if (!selectedJobOrderId) return;
+    const jobOrder = jobOrders.find(j => j.id === selectedJobOrderId);
+    if (!jobOrder) return;
+    
+    set({
+      mode: 'PLAN',
+      activeContainers: jobOrder.containers.map(c => ({ ...c, status: 'ON_SHIP' as const })),
+      editingContainerId: null,
+      validationPreview: null,
+    });
+  },
+
+  exitPlanMode: () => {
+    set({
+      mode: 'EDIT',
+      editingContainerId: null,
+      validationPreview: null,
+    });
+  },
+
+  setContainerTargetSlot: (containerId, slotId) => {
+    const state = get();
+    const container = state.activeContainers.find(c => c.id === containerId);
+    if (!container) return { valid: false, message: '集装箱不存在' };
+
+    const modifiedContainer = { ...container, targetSlot: slotId };
+    const validation = validatePlacement(slotId, modifiedContainer, state.yardGrid, state.activeContainers);
+    
+    if (validation.valid) {
+      set({
+        activeContainers: state.activeContainers.map(c =>
+          c.id === containerId ? { ...c, targetSlot: slotId } : c
+        ),
+        validationPreview: { valid: true },
+      });
+    } else {
+      set({ validationPreview: { valid: false, message: validation.message } });
+    }
+
+    return validation;
+  },
+
+  setEditingContainer: (containerId) => set({ editingContainerId: containerId }),
+
+  setValidationPreview: (preview) => set({ validationPreview: preview }),
+
+  applyReplaySnapshot: (snapshot) => {
+    set({
+      crane: snapshot.crane,
+      trucks: snapshot.trucks,
+      activeContainers: snapshot.containers,
+      yardGrid: snapshot.yardGrid,
+      currentTime: snapshot.currentTime,
+      currentContainerIndex: snapshot.currentContainerIndex,
+    });
+  },
+
+  incrementTruckMetric: (truckId, field, delta) => {
+    set(state => ({
+      trucks: state.trucks.map(t => 
+        t.id === truckId 
+          ? { ...t, metrics: { ...t.metrics, [field]: t.metrics[field] + delta } }
+          : t
+      ),
+    }));
+  },
+
+  recordContainerStartTime: (containerId) => {
+    const { currentTime } = get();
+    set(state => ({
+      containerStartTimes: {
+        ...state.containerStartTimes,
+        [containerId]: currentTime,
+      },
+    }));
+  },
+
+  finalizeContainerTime: (containerId) => {
+    const { currentTime, containerStartTimes, currentJobRecord } = get();
+    const startTime = containerStartTimes[containerId];
+    if (startTime === undefined || !currentJobRecord) return;
+
+    const elapsed = currentTime - startTime;
+    set(state => ({
+      currentJobRecord: {
+        ...state.currentJobRecord!,
+        containerTimes: {
+          ...state.currentJobRecord!.containerTimes,
+          [containerId]: elapsed,
+        },
+      },
+    }));
   },
 }));

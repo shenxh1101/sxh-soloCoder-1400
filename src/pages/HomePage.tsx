@@ -4,9 +4,14 @@ import { MonitorPanel } from '../components/MonitorPanel';
 import { ControlPanel } from '../components/ControlPanel';
 import { ViolationModal } from '../components/ViolationModal';
 import { useSimulationStore } from '../store/useSimulationStore';
+import { useOperationController } from '../hooks/useOperationController';
+import { useReplayEngine } from '../hooks/useReplayEngine';
 
 export const HomePage = () => {
-  const { violationMessage } = useSimulationStore();
+  const { violationMessage, mode } = useSimulationStore();
+  
+  useOperationController();
+  useReplayEngine();
 
   return (
     <div className="relative w-full h-screen overflow-hidden bg-slate-950">
@@ -36,6 +41,19 @@ export const HomePage = () => {
           </h1>
         </div>
       </div>
+
+      {mode !== 'EDIT' && (
+        <div className="absolute top-4 left-1/2 translate-x-20 pointer-events-none">
+          <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${
+            mode === 'PLAYING' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+            mode === 'REPLAY' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' :
+            mode === 'PLAN' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' :
+            'bg-slate-700/50 text-slate-400'
+          }`}>
+            {mode === 'PLAYING' ? '▶ 作业中' : mode === 'REPLAY' ? '⏮ 回放中' : mode === 'PLAN' ? '✎ 编排中' : ''}
+          </div>
+        </div>
+      )}
 
       <div className="absolute bottom-20 right-4 pointer-events-none">
         <div className="bg-slate-900/70 backdrop-blur-sm px-4 py-2 rounded-lg border border-slate-700/50 text-xs text-slate-400 space-y-1">

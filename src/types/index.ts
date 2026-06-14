@@ -28,6 +28,13 @@ export type YardGrid = YardSlot[][][];
 
 export type TruckStatus = 'IDLE' | 'LOADING' | 'MOVING_TO_CRANE' | 'MOVING_TO_YARD' | 'UNLOADING' | 'RETURNING';
 
+export interface TruckMetrics {
+  tripCount: number;
+  emptyDistance: number;
+  loadedDistance: number;
+  totalDistance: number;
+}
+
 export interface Truck {
   id: string;
   status: TruckStatus;
@@ -37,6 +44,7 @@ export interface Truck {
   rotation: number;
   totalOperationTime: number;
   totalIdleTime: number;
+  metrics: TruckMetrics;
 }
 
 export type CraneStatus = 'IDLE' | 'MOVING_TO_SHIP' | 'PICKING' | 'MOVING_WITH_LOAD' | 'PLACING_ON_TRUCK' | 'MOVING_FROM_TRUCK' | 'PLACING_IN_YARD';
@@ -81,6 +89,17 @@ export interface OperationLog {
   truckId?: string;
   details: string;
   duration: number;
+  snapshot?: ReplaySnapshot;
+}
+
+export interface ReplaySnapshot {
+  crane: Crane;
+  trucks: Truck[];
+  containers: Container[];
+  yardGrid: YardGrid;
+  currentTime: number;
+  currentContainerIndex: number;
+  completedContainers: number;
 }
 
 export interface JobRecord {
@@ -93,10 +112,11 @@ export interface JobRecord {
   containerTimes: Record<string, number>;
   craneEfficiency: number;
   truckUtilizations: Record<string, number>;
+  truckMetrics: Record<string, TruckMetrics>;
   logs: OperationLog[];
 }
 
-export type SimulationMode = 'EDIT' | 'PLAYING' | 'REPLAY';
+export type SimulationMode = 'EDIT' | 'PLAN' | 'PLAYING' | 'REPLAY';
 
 export interface SimulationState {
   isPlaying: boolean;
@@ -114,6 +134,9 @@ export interface SimulationState {
   violationMessage: string | null;
   currentContainerIndex: number;
   replayLogIndex: number;
+  containerStartTimes: Record<string, number>;
+  editingContainerId: string | null;
+  validationPreview: { valid: boolean; message?: string } | null;
 }
 
 export interface SimulationActions {
@@ -135,8 +158,18 @@ export interface SimulationActions {
   incrementContainerIndex: () => void;
   incrementReplayLogIndex: () => void;
   resetReplayLogIndex: () => void;
+  setReplayLogIndex: (index: number) => void;
   exportJobRecord: () => string;
   loadReplayData: (data: string) => void;
+  enterPlanMode: () => void;
+  exitPlanMode: () => void;
+  setContainerTargetSlot: (containerId: string, slotId: string) => { valid: boolean; message?: string };
+  setEditingContainer: (containerId: string | null) => void;
+  setValidationPreview: (preview: { valid: boolean; message?: string } | null) => void;
+  applyReplaySnapshot: (snapshot: ReplaySnapshot) => void;
+  incrementTruckMetric: (truckId: string, field: keyof TruckMetrics, delta: number) => void;
+  recordContainerStartTime: (containerId: string) => void;
+  finalizeContainerTime: (containerId: string) => void;
 }
 
 export interface CraneAnimationState {

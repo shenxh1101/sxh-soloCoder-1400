@@ -1,6 +1,6 @@
 import { useCallback, useRef, useEffect } from 'react';
 import { useSimulationStore } from '../store/useSimulationStore';
-import { OperationLog } from '../types';
+import { OperationLog, ReplaySnapshot } from '../types';
 
 export const useReplayEngine = () => {
   const {
@@ -11,72 +11,195 @@ export const useReplayEngine = () => {
     playbackSpeed,
     currentJobRecord,
     replayLogIndex,
-    incrementReplayLogIndex,
-    resetReplayLogIndex,
-    updateTime,
+    setReplayLogIndex,
+    applyReplaySnapshot,
+    setPlaybackSpeed,
+    pauseSimulation,
+    resumeSimulation,
   } = useSimulationStore();
 
-  const lastLogTime = useRef(0);
-  const isReplaying = useRef(false);
+  const animationFrameRef = useRef<number | null>(null);
+  const lastFrameTime = useRef<number>(0);
+
+  const getLogs = useCallback((): OperationLog[] => {
+    return currentJobRecord?.logs || [];
+  }, [currentJobRecord]);
+
+  const getTotalSteps = useCallback((): number => {
+    return getLogs().length;
+  }, [getLogs]);
+
+  const getProgress = useCallback((): number => {
+    const total = getTotalSteps();
+    if (total === 0) return 0;
+    return (replayLogIndex / total) * 100;
+  }, [replayLogIndex, getTotalSteps]);
+
+  const seekToStep = useCallback((stepIndex: number) => {
+    const logs = getLogs();
+    if (stepIndex < 0 || stepIndex >= logs.length) return;
+
+    let snapshot: ReplaySnapshot | undefined;
+    let targetIndex = stepIndex;
+
+    for (let i = stepIndex; i >= 0; i--) {
+      if (logs[i].snapshot) {
+        snapshot = logs[i].snapshot;
+        targetIndex = i;
+        break;
+      }
+    }
+
+    if (snapshot) {
+      applyReplaySnapshot(snapshot);
+      
+      for (let i = (targetIndex + 1); i <= stepIndex; i++) {
+        const log = logs[i];
+        if (log.snapshot) {
+          applyReplaySnapshot(log.snapshot);
+        }
+      }
+    }
+
+    setReplayLogIndex(stepIndex);
+  }, [getLogs, applyReplaySnapshot, setReplayLogIndex]);
+
+  const stepForward = useCallback(() => {
+    const logs = getLogs();
+    if (replayLogIndex >= logs.length - 1) return;
+    
+    const nextIndex = replayLogIndex + 1;
+    const log = logs[nextIndex];
+    
+    if (log.snapshot) {
+      applyReplaySnapshot(log.snapshot);
+    }
+    
+    setReplayLogIndex(nextIndex);
+  }, [replayLogIndex, getLogs, applyReplaySnapshot, setReplayLogIndex]);
+
+  const stepBackward = useCallback(() => {
+    if (replayLogIndex <= 0) return;
+    
+    const targetIndex = replayLogIndex - 1;
+    seekToStep(targetIndex);
+  }, [replayLogIndex, seekToStep]);
 
   const startReplay = useCallback(() => {
     if (!currentJobRecord || currentJobRecord.logs.length === 0) return;
+    setReplayLogIndex(0);
     
-    resetReplayLogIndex();
-    lastLogTime.current = 0;
-    isReplaying.current = true;
-  }, [currentJobRecord, resetReplayLogIndex]);
-
-  const processReplayStep = useCallback(() => {
-    if (!currentJobRecord || !isReplaying.current) return;
-    if (mode !== 'REPLAY' || !isPlaying || isPaused) return;
-
-    const logs = currentJobRecord.logs;
-    if (replayLogIndex >= logs.length) {
-      isReplaying.current = false;
-      return;
+    const firstLog = currentJobRecord.logs[0];
+    if (firstLog.snapshot) {
+      applyReplaySnapshot(firstLog.snapshot);
     }
+    
+    resumeSimulation();
+  }, [currentJobRecord, setReplayLogIndex, applyReplaySnapshot, resumeSimulation]);
 
-    const currentLog: OperationLog = logs[replayLogIndex];
-    const nextLog: OperationLog | undefined = logs[replayLogIndex + 1];
-
-    if (nextLog) {
-      const timeDiff = (nextLog.timestamp - currentLog.timestamp) / 1000 / playbackSpeed;
-      
-      if (currentTime - lastLogTime.current >= timeDiff) {
-        lastLogTime.current = currentTime;
-        incrementReplayLogIndex();
-      }
+  const togglePause = useCallback(() => {
+    if (isPaused) {
+      resumeSimulation();
     } else {
-      incrementReplayLogIndex();
-      isReplaying.current = false;
+      pauseSimulation();
     }
-  }, [currentJobRecord, mode, isPlaying, isPaused, currentTime, playbackSpeed, replayLogIndex, incrementReplayLogIndex]);
+  }, [isPaused, pauseSimulation, resumeSimulation]);
+
+  const playReplay = useCallback(() => {
+    const logs = getLogs();
+    if (logs.length === 0) return;
+
+    if (replayLogIndex === 0) {
+      const firstLog = logs[0];
+      if (firstLog.snapshot) {
+        applyReplaySnapshot(firstLog.snapshot);
+      }
+    }
+
+    resumeSimulation();
+    lastFrameTime.current = performance.now();
+
+    const tick = (now: number) => {
+      if (mode !== 'REPLAY' || !isPlaying || isPaused) return;
+
+      const delta = (now - lastFrameTime.current) / 1000;
+      lastFrameTime.current = now;
+
+      const currentIndex = useSimulationStore.getState().replayLogIndex;
+      if (currentIndex >= logs.length - 1) {
+        pauseSimulation();
+        return;
+      }
+
+      const stepsPerSecond = playbackSpeed * 2;
+      const stepsToAdvance = delta * stepsPerSecond;
+
+      if (stepsToAdvance >= 1) {
+        const advanceCount = Math.floor(stepsToAdvance);
+        for (let i = 0; i < advanceCount; i++) {
+          const ci = useSimulationStore.getState().replayLogIndex;
+          if (ci >= logs.length - 1) {
+            pauseSimulation();
+            return;
+          }
+          const nextLog = logs[ci + 1];
+          if (nextLog.snapshot) {
+            applyReplaySnapshot(nextLog.snapshot);
+          }
+          setReplayLogIndex(ci + 1);
+        }
+      }
+
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+  }, [mode, isPlaying, isPaused, playbackSpeed, getLogs, applyReplaySnapshot, setReplayLogIndex, pauseSimulation, resumeSimulation]);
+
+  const stopReplay = useCallback(() => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    pauseSimulation();
+  }, [pauseSimulation]);
 
   useEffect(() => {
-    if (mode === 'REPLAY' && isPlaying && !isPaused && isReplaying.current) {
-      const interval = setInterval(() => {
-        processReplayStep();
-      }, 100);
-      return () => clearInterval(interval);
+    if (mode === 'REPLAY' && isPlaying && !isPaused) {
+      if (!animationFrameRef.current) {
+        playReplay();
+      }
+    } else {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
     }
-  }, [mode, isPlaying, isPaused, processReplayStep]);
+  }, [mode, isPlaying, isPaused, playReplay]);
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
 
   const getCurrentLog = useCallback((): OperationLog | null => {
-    if (!currentJobRecord) return null;
-    return currentJobRecord.logs[replayLogIndex] || null;
-  }, [currentJobRecord, replayLogIndex]);
-
-  const getProgress = useCallback((): number => {
-    if (!currentJobRecord || currentJobRecord.logs.length === 0) return 0;
-    return (replayLogIndex / currentJobRecord.logs.length) * 100;
-  }, [currentJobRecord, replayLogIndex]);
+    const logs = getLogs();
+    return logs[replayLogIndex] || null;
+  }, [getLogs, replayLogIndex]);
 
   return {
     startReplay,
-    processReplayStep,
+    playReplay,
+    stopReplay,
+    togglePause,
+    stepForward,
+    stepBackward,
+    seekToStep,
     getCurrentLog,
     getProgress,
-    isReplaying: isReplaying.current,
+    getTotalSteps,
   };
 };
