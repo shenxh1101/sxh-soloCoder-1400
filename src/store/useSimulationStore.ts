@@ -5,10 +5,11 @@ import {
   Crane, 
   Container,
   TruckMetrics,
+  DispatchStrategy,
   SCENE_CONSTANTS 
 } from '../types';
 import { mockJobOrders, getSlotPosition } from '../utils/mockData';
-import { createEmptyYardGrid, validatePlacement } from '../utils/yardUtils';
+import { createEmptyYardGrid, validatePlacement, validatePlacementForPlan } from '../utils/yardUtils';
 import { createInitialTrucks, calculateTruckUtilization } from '../utils/truckDispatcher';
 import { exportJobRecordToJSON, generateJobRecordId } from '../utils/exportUtils';
 
@@ -45,6 +46,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   containerStartTimes: {},
   editingContainerId: null,
   validationPreview: null,
+  dispatchStrategy: 'NEAREST',
+  roundRobinCounter: 0,
+  replayStats: null,
 
   setMode: (mode) => set({ mode }),
 
@@ -57,13 +61,22 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         activeContainers: containers,
         currentContainerIndex: 0,
         containerStartTimes: {},
+        replayStats: null,
       });
     }
   },
 
   startSimulation: () => {
-    const { selectedJobOrderId, activeContainers } = get();
+    const { selectedJobOrderId, activeContainers, dispatchStrategy } = get();
     if (!selectedJobOrderId || activeContainers.length === 0) return;
+
+    for (const c of activeContainers) {
+      const r = validatePlacementForPlan(c.targetSlot, c, activeContainers);
+      if (!r.valid) {
+        set({ violationMessage: `编排校验失败：集装箱${c.id.slice(-6)} ${r.message}` });
+        return;
+      }
+    }
 
     const now = Date.now();
     const initialStartTimes: Record<string, number> = {};
@@ -79,6 +92,8 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       trucks: createInitialTrucks(),
       yardGrid: createEmptyYardGrid(),
       containerStartTimes: initialStartTimes,
+      roundRobinCounter: 0,
+      replayStats: null,
       currentJobRecord: {
         id: generateJobRecordId(),
         jobOrderId: selectedJobOrderId,
@@ -93,6 +108,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
           'TRK-002': emptyMetrics(),
           'TRK-003': emptyMetrics(),
         },
+        dispatchStrategy,
         logs: [],
       },
       activeContainers: activeContainers.map(c => ({ ...c, status: 'ON_SHIP' as const })),
@@ -103,31 +119,37 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   
   resumeSimulation: () => set({ isPaused: false }),
 
-  resetSimulation: () => set({
-    isPlaying: false,
-    isPaused: false,
-    mode: 'EDIT',
-    currentTime: 0,
-    currentContainerIndex: 0,
-    replayLogIndex: 0,
-    crane: createInitialCrane(),
-    trucks: createInitialTrucks(),
-    yardGrid: createEmptyYardGrid(),
-    currentJobRecord: null,
-    violationMessage: null,
-    containerStartTimes: {},
-    editingContainerId: null,
-    validationPreview: null,
-    activeContainers: get().selectedJobOrderId 
-      ? (get().jobOrders.find(j => j.id === get().selectedJobOrderId)?.containers.map(c => ({ ...c, status: 'ON_SHIP' as const })) || [])
-      : [],
-  }),
+  resetSimulation: () => {
+    const selId = get().selectedJobOrderId;
+    const jobOrder = selId ? get().jobOrders.find(j => j.id === selId) : undefined;
+    set({
+      isPlaying: false,
+      isPaused: false,
+      mode: 'EDIT',
+      currentTime: 0,
+      currentContainerIndex: 0,
+      replayLogIndex: 0,
+      crane: createInitialCrane(),
+      trucks: createInitialTrucks(),
+      yardGrid: createEmptyYardGrid(),
+      currentJobRecord: null,
+      violationMessage: null,
+      containerStartTimes: {},
+      editingContainerId: null,
+      validationPreview: null,
+      roundRobinCounter: 0,
+      replayStats: null,
+      activeContainers: jobOrder 
+        ? jobOrder.containers.map(c => ({ ...c, status: 'ON_SHIP' as const }))
+        : [],
+    });
+  },
 
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
 
   updateTime: (delta) => {
-    const { currentTime, playbackSpeed, isPaused } = get();
-    if (isPaused) return;
+    const { currentTime, playbackSpeed, isPaused, mode } = get();
+    if (isPaused || mode === 'REPLAY') return;
     const newTime = currentTime + delta * playbackSpeed;
     set({ currentTime: newTime });
     
@@ -166,6 +188,9 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       currentTime: state.currentTime,
       currentContainerIndex: state.currentContainerIndex,
       completedContainers: state.currentJobRecord.completedContainers,
+      containerTimes: { ...state.currentJobRecord.containerTimes },
+      truckUtilizations: { ...state.currentJobRecord.truckUtilizations },
+      craneEfficiency: state.currentJobRecord.craneEfficiency,
     };
 
     const newLog = { 
@@ -237,6 +262,11 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       truckUtilizations[truck.id] = calculateTruckUtilization(truck, state.currentTime);
     });
 
+    const newTruckMetrics: Record<string, TruckMetrics> = {};
+    state.trucks.forEach(truck => {
+      newTruckMetrics[truck.id] = { ...truck.metrics };
+    });
+
     set({
       yardGrid: newYardGrid,
       activeContainers: updatedContainers,
@@ -245,6 +275,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
         completedContainers: newCompleted,
         craneEfficiency,
         truckUtilizations,
+        truckMetrics: newTruckMetrics,
         endTime: newCompleted === state.currentJobRecord.totalContainers ? Date.now() : undefined,
       } : null,
       crane: {
@@ -271,9 +302,11 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
   setReplayLogIndex: (index: number) => set({ replayLogIndex: index }),
 
   exportJobRecord: () => {
-    const { currentJobRecord } = get();
+    const { currentJobRecord, trucks } = get();
     if (!currentJobRecord) return '';
-    return exportJobRecordToJSON(currentJobRecord);
+    const tm: Record<string, TruckMetrics> = {};
+    trucks.forEach(t => { tm[t.id] = { ...t.metrics }; });
+    return exportJobRecordToJSON({ ...currentJobRecord, truckMetrics: tm });
   },
 
   loadReplayData: (data) => {
@@ -283,14 +316,19 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       'TRK-002': emptyMetrics(),
       'TRK-003': emptyMetrics(),
     };
+    const strategy = (parsed.dispatchStrategy || 'NEAREST') as DispatchStrategy;
+
     set({
       mode: 'REPLAY',
-      isPlaying: false,
+      isPlaying: true,
       isPaused: true,
       currentTime: 0,
       replayLogIndex: 0,
+      dispatchStrategy: strategy,
+      replayStats: null,
       currentJobRecord: {
         ...parsed,
+        dispatchStrategy: strategy,
         truckMetrics,
       },
       yardGrid: createEmptyYardGrid(),
@@ -328,7 +366,7 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     if (!container) return { valid: false, message: '集装箱不存在' };
 
     const modifiedContainer = { ...container, targetSlot: slotId };
-    const validation = validatePlacement(slotId, modifiedContainer, state.yardGrid, state.activeContainers);
+    const validation = validatePlacementForPlan(slotId, modifiedContainer, state.activeContainers);
     
     if (validation.valid) {
       set({
@@ -356,6 +394,12 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       yardGrid: snapshot.yardGrid,
       currentTime: snapshot.currentTime,
       currentContainerIndex: snapshot.currentContainerIndex,
+      replayStats: {
+        completedContainers: snapshot.completedContainers,
+        containerTimes: snapshot.containerTimes,
+        truckUtilizations: snapshot.truckUtilizations,
+        craneEfficiency: snapshot.craneEfficiency,
+      },
     });
   },
 
@@ -395,4 +439,17 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
       },
     }));
   },
+
+  setDispatchStrategy: (strategy) => set({ dispatchStrategy: strategy }),
+
+  incrementRoundRobin: () => {
+    let next = 0;
+    set(state => {
+      next = state.roundRobinCounter + 1;
+      return { roundRobinCounter: next };
+    });
+    return next;
+  },
+
+  setReplayPlaying: (playing) => set({ isPlaying: playing }),
 }));

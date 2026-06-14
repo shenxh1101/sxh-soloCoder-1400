@@ -1,54 +1,70 @@
-import { Activity, Gauge, TrendingUp, Clock, Container, Route, Truck as TruckIcon } from 'lucide-react';
+import { Activity, Gauge, TrendingUp, Clock, Container, Route, Truck as TruckIcon, GitBranch } from 'lucide-react';
 import { useSimulationStore } from '../store/useSimulationStore';
 import { formatTime } from '../utils/exportUtils';
 import { formatDistance, summarizeTruckMetrics, calculateTruckUtilization } from '../utils/truckDispatcher';
+import { DISPATCH_STRATEGY_LABEL } from '../types';
 
 export const MonitorPanel = () => {
-  const { 
-    currentJobRecord, 
-    activeContainers, 
-    crane, 
-    trucks,
-    isPlaying,
-    currentTime,
-    currentContainerIndex,
-    mode,
-    replayLogIndex,
-  } = useSimulationStore();
+  const currentJobRecord = useSimulationStore(s => s.currentJobRecord);
+  const activeContainers = useSimulationStore(s => s.activeContainers);
+  const crane = useSimulationStore(s => s.crane);
+  const trucks = useSimulationStore(s => s.trucks);
+  const isPlaying = useSimulationStore(s => s.isPlaying);
+  const currentTime = useSimulationStore(s => s.currentTime);
+  const currentContainerIndex = useSimulationStore(s => s.currentContainerIndex);
+  const mode = useSimulationStore(s => s.mode);
+  const replayStats = useSimulationStore(s => s.replayStats);
+  const dispatchStrategy = useSimulationStore(s => s.dispatchStrategy);
 
   const isReplayMode = mode === 'REPLAY';
 
   const totalContainers = activeContainers.length || currentJobRecord?.totalContainers || 0;
   const completedContainers = isReplayMode 
-    ? activeContainers.filter(c => c.status === 'STORED').length 
+    ? (replayStats?.completedContainers ?? activeContainers.filter(c => c.status === 'STORED').length) 
     : (currentJobRecord?.completedContainers || 0);
   const progress = totalContainers > 0 ? (completedContainers / totalContainers) * 100 : 0;
-  
-  const craneEfficiency = currentJobRecord?.craneEfficiency || 0;
-  const effectiveTime = currentTime;
+
+  const containerTimes = isReplayMode
+    ? (replayStats?.containerTimes ?? {})
+    : (currentJobRecord?.containerTimes || {});
+
+  const recordedTimes = Object.values(containerTimes);
+  const avgTime = recordedTimes.length > 0 
+    ? recordedTimes.reduce((a, b) => a + b, 0) / recordedTimes.length 
+    : 0;
+
+  const craneEfficiency = isReplayMode
+    ? (replayStats?.craneEfficiency ?? 0)
+    : (currentJobRecord?.craneEfficiency || 0);
+
+  const effectiveTime = isReplayMode ? currentTime : currentTime;
 
   const currentContainer = activeContainers[currentContainerIndex];
 
   const metrics = summarizeTruckMetrics(trucks);
 
-  const containerTimes = currentJobRecord?.containerTimes || {};
-  const recordedTimes = Object.values(containerTimes);
-  const avgTime = recordedTimes.length > 0 
-    ? recordedTimes.reduce((a, b) => a + b, 0) / recordedTimes.length 
-    : 0;
+  const displayStrategy = isReplayMode
+    ? (currentJobRecord?.dispatchStrategy ? DISPATCH_STRATEGY_LABEL[currentJobRecord.dispatchStrategy] : '')
+    : DISPATCH_STRATEGY_LABEL[dispatchStrategy];
 
   const circumference = 2 * Math.PI * 45;
   const strokeDashoffset = circumference - (progress / 100) * circumference;
 
   return (
     <div className="absolute top-4 right-4 w-80 bg-slate-900/90 backdrop-blur-md rounded-xl shadow-2xl border border-slate-700/50 overflow-hidden max-h-[calc(100vh-100px)] overflow-y-auto">
-      <div className="p-4 bg-gradient-to-r from-blue-600 to-blue-500">
+      <div className={`p-4 ${isReplayMode ? 'bg-gradient-to-r from-purple-600 to-purple-500' : 'bg-gradient-to-r from-blue-600 to-blue-500'}`}>
         <div className="flex items-center gap-3">
           <Activity className="w-6 h-6 text-white" />
           <h2 className="text-lg font-bold text-white" style={{ fontFamily: "'Oswald', sans-serif" }}>
             {isReplayMode ? '回放监控' : '实时作业监控'}
           </h2>
         </div>
+        {displayStrategy && (
+          <div className="flex items-center gap-2 mt-2 text-xs text-white/90">
+            <GitBranch className="w-3 h-3" />
+            <span>调度策略: {displayStrategy}</span>
+          </div>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
@@ -146,7 +162,7 @@ export const MonitorPanel = () => {
           </h3>
           <div className="space-y-2">
             {trucks.map(truck => {
-              const util = calculateTruckUtilization(truck, currentTime || 1);
+              const util = calculateTruckUtilization(truck, effectiveTime || 1);
               return (
                 <div key={truck.id} className="bg-slate-800/30 rounded-lg p-3 border border-slate-700/50">
                   <div className="flex items-center justify-between mb-2">

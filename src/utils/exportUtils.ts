@@ -1,4 +1,4 @@
-import { JobRecord, OperationLog, TruckMetrics } from '../types';
+import { JobRecord, OperationLog, TruckMetrics, DispatchStrategy } from '../types';
 
 const emptyMetrics = (): TruckMetrics => ({ tripCount: 0, emptyDistance: 0, loadedDistance: 0, totalDistance: 0 });
 
@@ -14,13 +14,17 @@ export const exportJobRecordToJSON = (record: JobRecord): string => {
     craneEfficiency: record.craneEfficiency,
     truckUtilizations: record.truckUtilizations,
     truckMetrics: record.truckMetrics,
+    dispatchStrategy: record.dispatchStrategy || 'NEAREST',
     averageTimePerContainer: record.endTime 
       ? (record.endTime - record.startTime) / record.completedContainers / 1000 
       : 0,
     logs: record.logs.map(log => ({
-      ...log,
+      type: log.type,
+      containerId: log.containerId,
+      truckId: log.truckId,
+      details: log.details,
+      duration: log.duration,
       timestamp: new Date(log.timestamp).toISOString(),
-      snapshot: log.snapshot ? undefined : undefined,
     })),
     snapshots: record.logs.map((log, i) => ({
       logIndex: i,
@@ -63,6 +67,7 @@ export const parseReplayData = (jsonString: string): JobRecord | null => {
       ...data,
       startTime: new Date(data.startTime).getTime(),
       endTime: data.endTime ? new Date(data.endTime).getTime() : undefined,
+      dispatchStrategy: (data.dispatchStrategy || 'NEAREST') as DispatchStrategy,
       truckMetrics: data.truckMetrics || {
         'TRK-001': emptyMetrics(),
         'TRK-002': emptyMetrics(),

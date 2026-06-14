@@ -1,7 +1,8 @@
-import { Play, Pause, RotateCcw, Download, Upload, FastForward, SkipBack, SkipForward, ChevronLeft, ChevronRight, Edit3 } from 'lucide-react';
+import { Play, Pause, RotateCcw, Download, Upload, FastForward, SkipBack, SkipForward, ChevronLeft, ChevronRight, Edit3, RefreshCw, GitBranch } from 'lucide-react';
 import { useSimulationStore } from '../store/useSimulationStore';
 import { downloadJSON, parseReplayData } from '../utils/exportUtils';
 import { useReplayEngine } from '../hooks/useReplayEngine';
+import { DISPATCH_STRATEGY_LABEL } from '../types';
 
 export const ControlPanel = () => {
   const {
@@ -19,7 +20,11 @@ export const ControlPanel = () => {
     exportJobRecord,
     loadReplayData,
     enterPlanMode,
+    dispatchStrategy,
+    setDispatchStrategy,
   } = useSimulationStore();
+
+  const replayLogIndex = useSimulationStore(s => s.replayLogIndex);
 
   const replay = useReplayEngine();
 
@@ -59,7 +64,7 @@ export const ControlPanel = () => {
 
   const replayProgress = replay.getProgress();
   const replayTotalSteps = replay.getTotalSteps();
-  const replayCurrentStep = useSimulationStore.getState().replayLogIndex;
+  const replayCurrentStep = replayLogIndex;
 
   return (
     <div className="absolute bottom-4 left-1/2 -translate-x-1/2 w-auto bg-slate-900/90 backdrop-blur-md rounded-xl shadow-2xl border border-slate-700/50 overflow-hidden">
@@ -70,6 +75,15 @@ export const ControlPanel = () => {
               <SkipBack className="w-4 h-4 text-purple-400" />
               <span className="text-sm text-purple-400 font-medium">回放模式</span>
             </div>
+
+            {currentJobRecord?.dispatchStrategy && (
+              <div className="flex items-center gap-2 bg-cyan-500/10 px-3 py-1.5 rounded-lg border border-cyan-500/30">
+                <GitBranch className="w-4 h-4 text-cyan-400" />
+                <span className="text-sm text-cyan-400 font-medium">
+                  调度策略: {DISPATCH_STRATEGY_LABEL[currentJobRecord.dispatchStrategy]}
+                </span>
+              </div>
+            )}
 
             <div className="h-8 w-px bg-slate-700" />
 
@@ -84,11 +98,22 @@ export const ControlPanel = () => {
               </button>
 
               <button
-                onClick={isPaused ? replay.playReplay : replay.stopReplay}
+                onClick={() => {
+                  if (replayCurrentStep >= replayTotalSteps - 1) {
+                    replay.restartReplay();
+                  } else if (isPaused) {
+                    replay.playReplay();
+                  } else {
+                    replay.stopReplay();
+                  }
+                }}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg font-medium bg-green-600 hover:bg-green-500 text-white transition-all"
               >
                 {isPaused ? <Play className="w-5 h-5" /> : <Pause className="w-5 h-5" />}
-                {isPaused ? '播放' : '暂停'}
+                {replayCurrentStep >= replayTotalSteps - 1 ? (
+                  <RefreshCw className="w-5 h-5" />
+                ) : null}
+                {replayCurrentStep >= replayTotalSteps - 1 ? '从头播放' : (isPaused ? '播放' : '暂停')}
               </button>
 
               <button
@@ -99,11 +124,19 @@ export const ControlPanel = () => {
               >
                 <ChevronRight className="w-5 h-5" />
               </button>
+
+              <button
+                onClick={replay.restartReplay}
+                className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white transition-all"
+                title="从头开始"
+              >
+                <SkipForward className="w-5 h-5 rotate-180" />
+              </button>
             </div>
 
             <div className="w-64">
               <div className="flex items-center justify-between text-xs text-slate-400 mb-1">
-                <span>步骤 {replayCurrentStep + 1}/{replayTotalSteps}</span>
+                <span>步骤 {Math.min(replayCurrentStep + 1, replayTotalSteps)}/{replayTotalSteps}</span>
                 <span>{Math.round(replayProgress)}%</span>
               </div>
               <input
@@ -187,6 +220,25 @@ export const ControlPanel = () => {
                   </button>
                 </>
               )}
+            </div>
+
+            <div className="h-8 w-px bg-slate-700" />
+
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-slate-400" />
+                <span className="text-sm text-slate-400">策略:</span>
+                <select
+                  value={dispatchStrategy}
+                  onChange={(e) => setDispatchStrategy(e.target.value as any)}
+                  disabled={isPlaying || mode === 'PLAN'}
+                  className="bg-slate-800 text-white px-3 py-1.5 rounded-lg border border-slate-600/50 focus:outline-none focus:ring-2 focus:ring-orange-500 text-sm disabled:opacity-50"
+                >
+                  <option value="NEAREST">{DISPATCH_STRATEGY_LABEL.NEAREST}</option>
+                  <option value="MIN_EMPTY">{DISPATCH_STRATEGY_LABEL.MIN_EMPTY}</option>
+                  <option value="ROUND_ROBIN">{DISPATCH_STRATEGY_LABEL.ROUND_ROBIN}</option>
+                </select>
+              </div>
             </div>
 
             <div className="h-8 w-px bg-slate-700" />

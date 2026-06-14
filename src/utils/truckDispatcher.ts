@@ -1,4 +1,4 @@
-import { Truck, TruckMetrics, SCENE_CONSTANTS } from '../types';
+import { Truck, TruckMetrics, SCENE_CONSTANTS, DispatchStrategy } from '../types';
 
 export const calculateDistance = (
   p1: { x: number; z: number },
@@ -10,7 +10,9 @@ export const calculateDistance = (
 export const dispatchTruck = (
   trucks: Truck[],
   pickPosition: { x: number; z: number },
-  dropPosition: { x: number; z: number }
+  dropPosition: { x: number; z: number },
+  strategy: DispatchStrategy = 'NEAREST',
+  roundRobinCounter: number = 0,
 ): Truck | null => {
   const idleTrucks = trucks.filter(t => t.status === 'IDLE');
   
@@ -19,16 +21,37 @@ export const dispatchTruck = (
   }
 
   let bestTruck: Truck | null = null;
-  let minCost = Infinity;
 
-  for (const truck of idleTrucks) {
-    const deadheadDistance = calculateDistance(truck.position, pickPosition);
-    const loadedDistance = calculateDistance(pickPosition, dropPosition);
-    const totalCost = deadheadDistance * 1.5 + loadedDistance;
-    
-    if (totalCost < minCost) {
-      minCost = totalCost;
-      bestTruck = truck;
+  switch (strategy) {
+    case 'NEAREST': {
+      let minCost = Infinity;
+      for (const truck of idleTrucks) {
+        const deadheadDistance = calculateDistance(truck.position, pickPosition);
+        const loadedDistance = calculateDistance(pickPosition, dropPosition);
+        const totalCost = deadheadDistance * 1.5 + loadedDistance;
+        if (totalCost < minCost) {
+          minCost = totalCost;
+          bestTruck = truck;
+        }
+      }
+      break;
+    }
+    case 'MIN_EMPTY': {
+      let minEmpty = Infinity;
+      for (const truck of idleTrucks) {
+        const deadheadDistance = calculateDistance(truck.position, pickPosition);
+        if (deadheadDistance < minEmpty) {
+          minEmpty = deadheadDistance;
+          bestTruck = truck;
+        }
+      }
+      break;
+    }
+    case 'ROUND_ROBIN': {
+      const sorted = [...idleTrucks].sort((a, b) => a.id.localeCompare(b.id));
+      const index = roundRobinCounter % sorted.length;
+      bestTruck = sorted[index];
+      break;
     }
   }
 

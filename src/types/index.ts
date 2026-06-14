@@ -68,6 +68,8 @@ export interface JobOrder {
   createdAt: Date;
 }
 
+export type DispatchStrategy = 'NEAREST' | 'ROUND_ROBIN' | 'MIN_EMPTY';
+
 export type OperationType = 
   | 'CRANE_MOVE_TO_SHIP' 
   | 'CRANE_PICK' 
@@ -100,6 +102,9 @@ export interface ReplaySnapshot {
   currentTime: number;
   currentContainerIndex: number;
   completedContainers: number;
+  containerTimes: Record<string, number>;
+  truckUtilizations: Record<string, number>;
+  craneEfficiency: number;
 }
 
 export interface JobRecord {
@@ -113,6 +118,7 @@ export interface JobRecord {
   craneEfficiency: number;
   truckUtilizations: Record<string, number>;
   truckMetrics: Record<string, TruckMetrics>;
+  dispatchStrategy: DispatchStrategy;
   logs: OperationLog[];
 }
 
@@ -137,6 +143,14 @@ export interface SimulationState {
   containerStartTimes: Record<string, number>;
   editingContainerId: string | null;
   validationPreview: { valid: boolean; message?: string } | null;
+  dispatchStrategy: DispatchStrategy;
+  roundRobinCounter: number;
+  replayStats: {
+    completedContainers: number;
+    containerTimes: Record<string, number>;
+    truckUtilizations: Record<string, number>;
+    craneEfficiency: number;
+  } | null;
 }
 
 export interface SimulationActions {
@@ -170,6 +184,9 @@ export interface SimulationActions {
   incrementTruckMetric: (truckId: string, field: keyof TruckMetrics, delta: number) => void;
   recordContainerStartTime: (containerId: string) => void;
   finalizeContainerTime: (containerId: string) => void;
+  setDispatchStrategy: (strategy: DispatchStrategy) => void;
+  incrementRoundRobin: () => number;
+  setReplayPlaying: (playing: boolean) => void;
 }
 
 export interface CraneAnimationState {
@@ -186,6 +203,12 @@ export interface TruckAnimationState {
   duration: number;
   onComplete?: () => void;
 }
+
+export const DISPATCH_STRATEGY_LABEL: Record<DispatchStrategy, string> = {
+  NEAREST: '最近距离优先',
+  ROUND_ROBIN: '轮询分配',
+  MIN_EMPTY: '最少空驶优先',
+};
 
 export const SCENE_CONSTANTS = {
   YARD_BAYS: 6,
