@@ -10,7 +10,6 @@ interface AnimationCallbacks {
 }
 
 export const useCraneAnimation = () => {
-  const { crane, updateCrane, updateContainer, activeContainers, addOperationLog } = useSimulationStore();
   const currentTween = useRef<TWEEN.Tween<{ x: number; trolley: number; hoist: number }> | null>(null);
   const isAnimating = useRef(false);
 
@@ -26,6 +25,8 @@ export const useCraneAnimation = () => {
     stopCurrentAnimation();
     isAnimating.current = true;
 
+    const state = useSimulationStore.getState();
+    const crane = state.crane;
     const startValues = {
       x: crane.positionX,
       trolley: crane.trolleyPosition,
@@ -36,7 +37,7 @@ export const useCraneAnimation = () => {
       .to({ x: targetX, trolley: targetTrolley, hoist: targetHoist }, duration)
       .easing(TWEEN.Easing.Cubic.InOut)
       .onUpdate((values) => {
-        updateCrane({
+        useSimulationStore.getState().updateCrane({
           positionX: values.x,
           trolleyPosition: values.trolley,
           hoistHeight: values.hoist,
@@ -50,10 +51,11 @@ export const useCraneAnimation = () => {
 
     currentTween.current = tween;
     tween.start();
-  }, [crane, updateCrane, stopCurrentAnimation]);
+  }, [stopCurrentAnimation]);
 
   const moveToShip = useCallback((containerId: string, callbacks?: AnimationCallbacks) => {
-    const container = activeContainers.find(c => c.id === containerId);
+  const { activeContainers, updateCrane, addOperationLog } = useSimulationStore.getState();
+  const container = activeContainers.find(c => c.id === containerId);
     if (!container) return;
 
     updateCrane({ status: 'MOVING_TO_SHIP' });
@@ -70,17 +72,19 @@ export const useCraneAnimation = () => {
 
     animateTo(targetX, targetTrolley, targetHoist, 2500, {
       onComplete: () => {
-        updateCrane({ status: 'PICKING' });
+        useSimulationStore.getState().updateCrane({ status: 'PICKING' });
         callbacks?.onComplete?.();
       },
     });
-  }, [activeContainers, updateCrane, addOperationLog, animateTo]);
+  }, [animateTo]);
 
   const pickContainer = useCallback((containerId: string, callbacks?: AnimationCallbacks) => {
+    const { activeContainers, updateCrane, updateContainer, addOperationLog } = useSimulationStore.getState();
     const container = activeContainers.find(c => c.id === containerId);
     if (!container) return;
 
-    const startValues = { hoist: crane.hoistHeight };
+    const state = useSimulationStore.getState();
+    const startValues = { hoist: state.crane.hoistHeight };
     const targetHoist = 0.2;
 
     stopCurrentAnimation();
@@ -90,12 +94,13 @@ export const useCraneAnimation = () => {
       .to({ hoist: targetHoist }, 1500)
       .easing(TWEEN.Easing.Quadratic.InOut)
       .onUpdate((values) => {
-        updateCrane({ hoistHeight: values.hoist });
+        useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
       })
       .onComplete(() => {
-        updateCrane({ spreaderAttached: true, currentContainerId: containerId });
-        updateContainer(containerId, { status: 'ON_CRANE' });
-        addOperationLog({
+        const s = useSimulationStore.getState();
+        s.updateCrane({ spreaderAttached: true, currentContainerId: containerId });
+        s.updateContainer(containerId, { status: 'ON_CRANE' });
+        s.addOperationLog({
           type: 'CRANE_PICK',
           containerId,
           details: `抓取集装箱 ${container.id.slice(-4)} (${container.size}, ${container.weight}吨)`,
@@ -108,7 +113,7 @@ export const useCraneAnimation = () => {
             .to({ hoist: 0.7 }, 1500)
             .easing(TWEEN.Easing.Quadratic.InOut)
             .onUpdate((values) => {
-              updateCrane({ hoistHeight: values.hoist });
+              useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
             })
             .onComplete(() => {
               isAnimating.current = false;
@@ -120,9 +125,10 @@ export const useCraneAnimation = () => {
 
     currentTween.current = lowerTween as unknown as TWEEN.Tween<{ x: number; trolley: number; hoist: number }>;
     lowerTween.start();
-  }, [crane, activeContainers, updateCrane, updateContainer, addOperationLog, stopCurrentAnimation]);
+  }, [stopCurrentAnimation]);
 
   const moveToTransferPoint = useCallback((containerId: string, callbacks?: AnimationCallbacks) => {
+    const { updateCrane, addOperationLog } = useSimulationStore.getState();
     updateCrane({ status: 'MOVING_WITH_LOAD' });
     addOperationLog({
       type: 'CRANE_MOVE_WITH_LOAD',
@@ -137,14 +143,15 @@ export const useCraneAnimation = () => {
 
     animateTo(targetX, targetTrolley, targetHoist, 3000, {
       onComplete: () => {
-        updateCrane({ status: 'PLACING_ON_TRUCK' });
+        useSimulationStore.getState().updateCrane({ status: 'PLACING_ON_TRUCK' });
         callbacks?.onComplete?.();
       },
     });
-  }, [updateCrane, addOperationLog, animateTo]);
+  }, [animateTo]);
 
   const placeOnTruck = useCallback((containerId: string, callbacks?: AnimationCallbacks) => {
-    const startValues = { hoist: crane.hoistHeight };
+    const state = useSimulationStore.getState();
+    const startValues = { hoist: state.crane.hoistHeight };
     const targetHoist = 0.35;
 
     stopCurrentAnimation();
@@ -154,12 +161,13 @@ export const useCraneAnimation = () => {
       .to({ hoist: targetHoist }, 1200)
       .easing(TWEEN.Easing.Quadratic.InOut)
       .onUpdate((values) => {
-        updateCrane({ hoistHeight: values.hoist });
+        useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
       })
       .onComplete(() => {
-        updateCrane({ spreaderAttached: false, currentContainerId: null });
-        updateContainer(containerId, { status: 'ON_TRUCK' });
-        addOperationLog({
+        const s = useSimulationStore.getState();
+        s.updateCrane({ spreaderAttached: false, currentContainerId: null });
+        s.updateContainer(containerId, { status: 'ON_TRUCK' });
+        s.addOperationLog({
           type: 'CRANE_PLACE_ON_TRUCK',
           containerId,
           details: `将集装箱 ${containerId.slice(-4)} 放置到集卡上`,
@@ -172,10 +180,10 @@ export const useCraneAnimation = () => {
             .to({ hoist: 0.7 }, 1200)
             .easing(TWEEN.Easing.Quadratic.InOut)
             .onUpdate((values) => {
-              updateCrane({ hoistHeight: values.hoist });
+              useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
             })
             .onComplete(() => {
-              updateCrane({ status: 'IDLE' });
+              useSimulationStore.getState().updateCrane({ status: 'IDLE' });
               isAnimating.current = false;
               callbacks?.onComplete?.();
             });
@@ -185,12 +193,13 @@ export const useCraneAnimation = () => {
 
     currentTween.current = lowerTween as unknown as TWEEN.Tween<{ x: number; trolley: number; hoist: number }>;
     lowerTween.start();
-  }, [crane, updateCrane, updateContainer, addOperationLog, stopCurrentAnimation]);
+  }, [stopCurrentAnimation]);
 
   const moveToYard = useCallback((containerId: string, targetSlotId: string, callbacks?: AnimationCallbacks) => {
     const { bay, row } = getSlotPosition(targetSlotId);
     const { x } = getSlotWorldPosition(bay, row, 0);
 
+    const { updateCrane, addOperationLog } = useSimulationStore.getState();
     updateCrane({ status: 'MOVING_FROM_TRUCK' });
     addOperationLog({
       type: 'CRANE_MOVE_FROM_TRUCK',
@@ -205,11 +214,11 @@ export const useCraneAnimation = () => {
 
     animateTo(targetX, targetTrolley, targetHoist, 2500, {
       onComplete: () => {
-        updateCrane({ status: 'PLACING_IN_YARD' });
+        useSimulationStore.getState().updateCrane({ status: 'PLACING_IN_YARD' });
         callbacks?.onComplete?.();
       },
     });
-  }, [updateCrane, addOperationLog, animateTo]);
+  }, [animateTo]);
 
   const placeInYard = useCallback((containerId: string, targetSlotId: string, callbacks?: AnimationCallbacks) => {
     const { bay, row, tier } = getSlotPosition(targetSlotId);
@@ -218,17 +227,19 @@ export const useCraneAnimation = () => {
     stopCurrentAnimation();
     isAnimating.current = true;
 
-    const startValues = { hoist: crane.hoistHeight };
+    const state = useSimulationStore.getState();
+    const startValues = { hoist: state.crane.hoistHeight };
 
     const lowerTween = new TWEEN.Tween(startValues)
       .to({ hoist: targetHoist }, 1500)
       .easing(TWEEN.Easing.Quadratic.InOut)
       .onUpdate((values) => {
-        updateCrane({ hoistHeight: values.hoist });
+        useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
       })
       .onComplete(() => {
-        updateCrane({ spreaderAttached: false, currentContainerId: null });
-        addOperationLog({
+        const s = useSimulationStore.getState();
+        s.updateCrane({ spreaderAttached: false, currentContainerId: null });
+        s.addOperationLog({
           type: 'CRANE_PLACE_IN_YARD',
           containerId,
           details: `将集装箱 ${containerId.slice(-4)} 堆放到 ${targetSlotId}`,
@@ -241,10 +252,10 @@ export const useCraneAnimation = () => {
             .to({ hoist: 0.8 }, 1500)
             .easing(TWEEN.Easing.Quadratic.InOut)
             .onUpdate((values) => {
-              updateCrane({ hoistHeight: values.hoist });
+              useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
             })
             .onComplete(() => {
-              updateCrane({ status: 'IDLE' });
+              useSimulationStore.getState().updateCrane({ status: 'IDLE' });
               isAnimating.current = false;
               callbacks?.onComplete?.();
             });
@@ -254,24 +265,26 @@ export const useCraneAnimation = () => {
 
     currentTween.current = lowerTween as unknown as TWEEN.Tween<{ x: number; trolley: number; hoist: number }>;
     lowerTween.start();
-  }, [crane, updateCrane, addOperationLog, stopCurrentAnimation]);
+  }, [stopCurrentAnimation]);
 
   const pickFromTruck = useCallback((containerId: string, callbacks?: AnimationCallbacks) => {
-    const startValues = { hoist: crane.hoistHeight };
-    const targetHoist = 0.35;
-
     stopCurrentAnimation();
     isAnimating.current = true;
+
+    const state = useSimulationStore.getState();
+    const startValues = { hoist: state.crane.hoistHeight };
+    const targetHoist = 0.35;
 
     const lowerTween = new TWEEN.Tween(startValues)
       .to({ hoist: targetHoist }, 1200)
       .easing(TWEEN.Easing.Quadratic.InOut)
       .onUpdate((values) => {
-        updateCrane({ hoistHeight: values.hoist });
+        useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
       })
       .onComplete(() => {
-        updateCrane({ spreaderAttached: true, currentContainerId: containerId });
-        updateContainer(containerId, { status: 'ON_CRANE' });
+        const s = useSimulationStore.getState();
+        s.updateCrane({ spreaderAttached: true, currentContainerId: containerId });
+        s.updateContainer(containerId, { status: 'ON_CRANE' });
 
         setTimeout(() => {
           const raiseValues = { hoist: targetHoist };
@@ -279,7 +292,7 @@ export const useCraneAnimation = () => {
             .to({ hoist: 0.7 }, 1200)
             .easing(TWEEN.Easing.Quadratic.InOut)
             .onUpdate((values) => {
-              updateCrane({ hoistHeight: values.hoist });
+              useSimulationStore.getState().updateCrane({ hoistHeight: values.hoist });
             })
             .onComplete(() => {
               isAnimating.current = false;
@@ -291,7 +304,7 @@ export const useCraneAnimation = () => {
 
     currentTween.current = lowerTween as unknown as TWEEN.Tween<{ x: number; trolley: number; hoist: number }>;
     lowerTween.start();
-  }, [crane, updateCrane, updateContainer, stopCurrentAnimation]);
+  }, [stopCurrentAnimation]);
 
   useEffect(() => {
     return () => {
@@ -300,7 +313,7 @@ export const useCraneAnimation = () => {
   }, [stopCurrentAnimation]);
 
   return {
-    isAnimating: isAnimating.current,
+    isAnimating,
     animateTo,
     moveToShip,
     pickContainer,

@@ -9,7 +9,7 @@ interface YardProps {
 }
 
 export const Yard = ({ yardGrid }: YardProps) => {
-  const { activeContainers } = useSimulationStore();
+  const activeContainers = useSimulationStore(s => s.activeContainers);
 
   const storedContainers = useMemo(() => {
     const result: { container: typeof activeContainers[0]; position: [number, number, number]; slotId: string }[] = [];

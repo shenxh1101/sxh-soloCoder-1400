@@ -5,14 +5,12 @@ import { dispatchTruck, calculateDistance } from '../utils/truckDispatcher';
 import { SCENE_CONSTANTS } from '../types';
 
 export const useTruckAnimation = () => {
-  const {
-    trucks,
-    dispatchStrategy,
-    roundRobinCounter,
-    updateTruck,
-    incrementRoundRobin,
-    incrementTruckMetric,
-  } = useSimulationStore();
+  const trucks = useSimulationStore(s => s.trucks);
+  const dispatchStrategy = useSimulationStore(s => s.dispatchStrategy);
+  const roundRobinCounter = useSimulationStore(s => s.roundRobinCounter);
+  const updateTruck = useSimulationStore(s => s.updateTruck);
+  const incrementRoundRobin = useSimulationStore(s => s.incrementRoundRobin);
+  const incrementTruckMetric = useSimulationStore(s => s.incrementTruckMetric);
 
   const animateTruckTo = useCallback((
     truckId: string,

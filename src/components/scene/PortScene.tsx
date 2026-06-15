@@ -24,7 +24,12 @@ const AnimationUpdater = () => {
 };
 
 const SceneContent = () => {
-  const { crane, trucks, yardGrid, activeContainers, selectedJobOrderId, jobOrders } = useSimulationStore();
+  const crane = useSimulationStore(s => s.crane);
+  const trucks = useSimulationStore(s => s.trucks);
+  const yardGrid = useSimulationStore(s => s.yardGrid);
+  const activeContainers = useSimulationStore(s => s.activeContainers);
+  const selectedJobOrderId = useSimulationStore(s => s.selectedJobOrderId);
+  const jobOrders = useSimulationStore(s => s.jobOrders);
   const { processNextContainer } = useOperationController();
 
   const selectedJobOrder = jobOrders.find(j => j.id === selectedJobOrderId);

@@ -186,7 +186,6 @@ export interface SimulationActions {
   finalizeContainerTime: (containerId: string) => void;
   setDispatchStrategy: (strategy: DispatchStrategy) => void;
   incrementRoundRobin: () => number;
-  setReplayPlaying: (playing: boolean) => void;
 }
 
 export interface CraneAnimationState {

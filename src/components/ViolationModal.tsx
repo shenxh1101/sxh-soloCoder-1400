@@ -2,7 +2,9 @@ import { AlertTriangle, X } from 'lucide-react';
 import { useSimulationStore } from '../store/useSimulationStore';
 
 export const ViolationModal = () => {
-  const { violationMessage, setViolationMessage, pauseSimulation } = useSimulationStore();
+  const violationMessage = useSimulationStore(s => s.violationMessage);
+  const setViolationMessage = useSimulationStore(s => s.setViolationMessage);
+  const pauseSimulation = useSimulationStore(s => s.pauseSimulation);
 
   if (!violationMessage) return null;
 

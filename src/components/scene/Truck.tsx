@@ -14,7 +14,7 @@ export const Truck = ({ truck }: TruckProps) => {
   const wheelRefs = useRef<THREE.Mesh[]>([]);
   const lastPosition = useRef({ x: truck.position.x, z: truck.position.z });
 
-  const { activeContainers } = useSimulationStore();
+  const activeContainers = useSimulationStore(s => s.activeContainers);
   const container = activeContainers.find(c => c.id === truck.containerId);
 
   const statusColors: Record<TruckType['status'], string> = {

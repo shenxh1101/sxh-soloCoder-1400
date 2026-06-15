@@ -450,6 +450,4 @@ export const useSimulationStore = create<SimulationState & SimulationActions>((s
     });
     return next;
   },
-
-  setReplayPlaying: (playing) => set({ isPlaying: playing }),
 }));

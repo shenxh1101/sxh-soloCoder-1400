@@ -6,24 +6,22 @@ import { getSlotId, getSlotPosition } from '../utils/mockData';
 import { SCENE_CONSTANTS } from '../types';
 
 export const JobPanel = () => {
-  const { 
-    jobOrders, 
-    selectedJobOrderId, 
-    selectJobOrder, 
-    activeContainers, 
-    currentJobRecord,
-    isPlaying,
-    currentContainerIndex,
-    mode,
-    editingContainerId,
-    validationPreview,
-    setEditingContainer,
-    setContainerTargetSlot,
-    setValidationPreview,
-    exitPlanMode,
-    startSimulation,
-    setMode,
-  } = useSimulationStore();
+  const jobOrders = useSimulationStore(s => s.jobOrders);
+  const selectedJobOrderId = useSimulationStore(s => s.selectedJobOrderId);
+  const selectJobOrder = useSimulationStore(s => s.selectJobOrder);
+  const activeContainers = useSimulationStore(s => s.activeContainers);
+  const currentJobRecord = useSimulationStore(s => s.currentJobRecord);
+  const isPlaying = useSimulationStore(s => s.isPlaying);
+  const currentContainerIndex = useSimulationStore(s => s.currentContainerIndex);
+  const mode = useSimulationStore(s => s.mode);
+  const editingContainerId = useSimulationStore(s => s.editingContainerId);
+  const validationPreview = useSimulationStore(s => s.validationPreview);
+  const setEditingContainer = useSimulationStore(s => s.setEditingContainer);
+  const setContainerTargetSlot = useSimulationStore(s => s.setContainerTargetSlot);
+  const setValidationPreview = useSimulationStore(s => s.setValidationPreview);
+  const exitPlanMode = useSimulationStore(s => s.exitPlanMode);
+  const startSimulation = useSimulationStore(s => s.startSimulation);
+  const setMode = useSimulationStore(s => s.setMode);
 
   const selectedJobOrder = jobOrders.find(j => j.id === selectedJobOrderId);
   const isPlanMode = mode === 'PLAN';

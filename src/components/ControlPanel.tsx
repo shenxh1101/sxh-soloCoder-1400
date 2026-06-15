@@ -5,24 +5,22 @@ import { useReplayEngine } from '../hooks/useReplayEngine';
 import { DISPATCH_STRATEGY_LABEL } from '../types';
 
 export const ControlPanel = () => {
-  const {
-    isPlaying,
-    isPaused,
-    mode,
-    playbackSpeed,
-    selectedJobOrderId,
-    currentJobRecord,
-    startSimulation,
-    pauseSimulation,
-    resumeSimulation,
-    resetSimulation,
-    setPlaybackSpeed,
-    exportJobRecord,
-    loadReplayData,
-    enterPlanMode,
-    dispatchStrategy,
-    setDispatchStrategy,
-  } = useSimulationStore();
+  const isPlaying = useSimulationStore(s => s.isPlaying);
+  const isPaused = useSimulationStore(s => s.isPaused);
+  const mode = useSimulationStore(s => s.mode);
+  const playbackSpeed = useSimulationStore(s => s.playbackSpeed);
+  const selectedJobOrderId = useSimulationStore(s => s.selectedJobOrderId);
+  const currentJobRecord = useSimulationStore(s => s.currentJobRecord);
+  const startSimulation = useSimulationStore(s => s.startSimulation);
+  const pauseSimulation = useSimulationStore(s => s.pauseSimulation);
+  const resumeSimulation = useSimulationStore(s => s.resumeSimulation);
+  const resetSimulation = useSimulationStore(s => s.resetSimulation);
+  const setPlaybackSpeed = useSimulationStore(s => s.setPlaybackSpeed);
+  const exportJobRecord = useSimulationStore(s => s.exportJobRecord);
+  const loadReplayData = useSimulationStore(s => s.loadReplayData);
+  const enterPlanMode = useSimulationStore(s => s.enterPlanMode);
+  const dispatchStrategy = useSimulationStore(s => s.dispatchStrategy);
+  const setDispatchStrategy = useSimulationStore(s => s.setDispatchStrategy);
 
   const replayLogIndex = useSimulationStore(s => s.replayLogIndex);
 

@@ -15,7 +15,7 @@ export const Crane = ({ crane }: CraneProps) => {
   const hoistRef = useRef<THREE.Group>(null);
   const spreaderRef = useRef<THREE.Group>(null);
 
-  const { activeContainers } = useSimulationStore();
+  const activeContainers = useSimulationStore(s => s.activeContainers);
   const currentContainer = activeContainers.find(c => c.id === crane.currentContainerId);
 
   const gantryHeight = 20;

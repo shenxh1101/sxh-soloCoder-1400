@@ -3,20 +3,16 @@ import { useSimulationStore } from '../store/useSimulationStore';
 import { OperationLog } from '../types';
 
 export const useReplayEngine = () => {
-  const {
-    mode,
-    isPlaying,
-    isPaused,
-    playbackSpeed,
-    currentJobRecord,
-    replayLogIndex,
-    setReplayLogIndex,
-    applyReplaySnapshot,
-    setPlaybackSpeed,
-    pauseSimulation,
-    resumeSimulation,
-    setReplayPlaying,
-  } = useSimulationStore();
+  const mode = useSimulationStore(s => s.mode);
+  const isPlaying = useSimulationStore(s => s.isPlaying);
+  const isPaused = useSimulationStore(s => s.isPaused);
+  const playbackSpeed = useSimulationStore(s => s.playbackSpeed);
+  const currentJobRecord = useSimulationStore(s => s.currentJobRecord);
+  const replayLogIndex = useSimulationStore(s => s.replayLogIndex);
+  const setReplayLogIndex = useSimulationStore(s => s.setReplayLogIndex);
+  const applyReplaySnapshot = useSimulationStore(s => s.applyReplaySnapshot);
+  const pauseSimulation = useSimulationStore(s => s.pauseSimulation);
+  const resumeSimulation = useSimulationStore(s => s.resumeSimulation);
 
   const animationFrameRef = useRef<number | null>(null);
   const lastFrameTime = useRef<number>(0);

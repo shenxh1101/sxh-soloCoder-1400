@@ -8,7 +8,8 @@ import { useOperationController } from '../hooks/useOperationController';
 import { useReplayEngine } from '../hooks/useReplayEngine';
 
 export const HomePage = () => {
-  const { violationMessage, mode } = useSimulationStore();
+  const violationMessage = useSimulationStore(s => s.violationMessage);
+  const mode = useSimulationStore(s => s.mode);
   
   useOperationController();
   useReplayEngine();

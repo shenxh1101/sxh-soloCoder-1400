@@ -7,25 +7,23 @@ import { calculateDistance } from '../utils/truckDispatcher';
 import { SCENE_CONSTANTS } from '../types';
 
 export const useOperationController = () => {
-  const {
-    isPlaying,
-    isPaused,
-    mode,
-    activeContainers,
-    currentContainerIndex,
-    yardGrid,
-    crane,
-    trucks,
-    incrementContainerIndex,
-    placeContainerInYard,
-    addOperationLog,
-    setViolationMessage,
-    currentJobRecord,
-    updateJobRecord,
-    recordContainerStartTime,
-    finalizeContainerTime,
-    incrementTruckMetric,
-  } = useSimulationStore();
+  const isPlaying = useSimulationStore(s => s.isPlaying);
+  const isPaused = useSimulationStore(s => s.isPaused);
+  const mode = useSimulationStore(s => s.mode);
+  const activeContainers = useSimulationStore(s => s.activeContainers);
+  const currentContainerIndex = useSimulationStore(s => s.currentContainerIndex);
+  const yardGrid = useSimulationStore(s => s.yardGrid);
+  const crane = useSimulationStore(s => s.crane);
+  const trucks = useSimulationStore(s => s.trucks);
+  const incrementContainerIndex = useSimulationStore(s => s.incrementContainerIndex);
+  const placeContainerInYard = useSimulationStore(s => s.placeContainerInYard);
+  const addOperationLog = useSimulationStore(s => s.addOperationLog);
+  const setViolationMessage = useSimulationStore(s => s.setViolationMessage);
+  const currentJobRecord = useSimulationStore(s => s.currentJobRecord);
+  const updateJobRecord = useSimulationStore(s => s.updateJobRecord);
+  const recordContainerStartTime = useSimulationStore(s => s.recordContainerStartTime);
+  const finalizeContainerTime = useSimulationStore(s => s.finalizeContainerTime);
+  const incrementTruckMetric = useSimulationStore(s => s.incrementTruckMetric);
 
   const {
     moveToShip,
@@ -49,33 +47,34 @@ export const useOperationController = () => {
   const currentTruckId = useRef<string | null>(null);
 
   const processNextContainer = useCallback(() => {
-    if (!isPlaying || isPaused || mode !== 'PLAYING') return;
-    if (isProcessing.current || isCraneAnimating) return;
-    if (currentContainerIndex >= activeContainers.length) return;
+    const state = useSimulationStore.getState();
+    if (!state.isPlaying || state.isPaused || state.mode !== 'PLAYING') return;
+    if (isProcessing.current || isCraneAnimating.current) return;
+    if (state.currentContainerIndex >= state.activeContainers.length) return;
 
-    const container = activeContainers[currentContainerIndex];
+    const container = state.activeContainers[state.currentContainerIndex];
     if (!container || container.status === 'STORED') {
-      incrementContainerIndex();
+      state.incrementContainerIndex();
       return;
     }
 
     isProcessing.current = true;
     currentStep.current = 0;
 
-    const validation = validatePlacement(container.targetSlot, container, yardGrid, activeContainers);
+    const validation = validatePlacement(container.targetSlot, container, state.yardGrid, state.activeContainers);
     if (!validation.valid) {
-      addOperationLog({
+      state.addOperationLog({
         type: 'VIOLATION_WARNING',
         containerId: container.id,
         details: `放置违规: ${validation.message}`,
         duration: 0,
       });
-      setViolationMessage(validation.message || '违规操作');
+      state.setViolationMessage(validation.message || '违规操作');
       isProcessing.current = false;
       return;
     }
 
-    recordContainerStartTime(container.id);
+    state.recordContainerStartTime(container.id);
 
     const executeStep = () => {
       if (!isPlaying || isPaused) {
